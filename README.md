@@ -1,6 +1,6 @@
 # SMA Strategy App
 
-A Streamlit app for exploring a Simple Moving Average (SMA) trading strategy. Coded with LLMs.
+A Streamlit app for exploring a Simple Moving Average (SMA) trading strategy. Coded with LLMs. Very inefficient.
 
 ## Prerequisites
 - Python 3.10+
