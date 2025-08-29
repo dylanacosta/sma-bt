@@ -59,11 +59,11 @@ print(pd.DataFrame({
     'Close': df['Close'].tail(5),
     f'SMA_{N}': ma.tail(5)
 }))
-
+'''
 print(ma.head(5))
 print(ma.head(205))
 print(ma.tail(5))
-
+'''
 # Position signal: compute with today's data, apply next day to avoid lookahead
 raw_signal = (df['Close'] > ma)
 position = raw_signal.shift(1).fillna(False).astype(int)
@@ -82,10 +82,10 @@ ret_strat = position * ret_mkt
 # Buy & Hold equity for comparison
 ret_bh = ret_mkt
 equity_bh = (1 + ret_bh).cumprod()
-
+'''
 print("\nMarket daily return stats:", ret_mkt.describe())
 print("Strategy daily return stats:", ret_strat.describe())
-
+'''
 equity = (1 + ret_strat).cumprod()
 print("Final equity (start=1.0):", float(equity.iloc[-1]))
 
@@ -107,11 +107,12 @@ total_return = final_equity - 1.0
 mdd = max_drawdown(equity)
 sharpe = sharpe_annualized(ret_strat)
 
+'''
 print("\n=== RESULTS ===")
 print(f"Total Return: {total_return:.2%}")
 print(f"Final Equity: {final_equity:.4f} (start=1.0000)")
 print(f"Sharpe (ann.): {sharpe:.2f}")
 print(f"Max Drawdown: {mdd:.2%}")   
 print(f"Buy & Hold Final Equity: {float(equity_bh.iloc[-1]):.4f}")
-
+'''
 # Graphs removed - use app.py for interactive visualization

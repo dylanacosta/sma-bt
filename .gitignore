@@ -1,3 +1,30 @@
+# Virtual environments
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# Logs and local data
+*.log
+.env
+.env.*
+.venv/
+
+# Jupyter/pydeck artifacts (if present)
+share/
+
+# Streamlit local config/secrets (if you add them later)
+.streamlit/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -8,10 +8,11 @@ import yfinance as yf
 
 
 def fetch_ohlcv(ticker: str, start: dt.date, end: dt.date, auto_adjust: bool = True) -> pd.DataFrame:
+    end_inclusive = end + dt.timedelta(days=1)
     df = yf.download(
         ticker,
         start=str(start),
-        end=str(end),
+        end=str(end_inclusive),
         auto_adjust=auto_adjust,
         group_by="column",
     ).dropna()
@@ -83,19 +84,42 @@ def compute_strategy(
             desired_state[close > up_level] = 1
             desired_state[close < down_level] = -1
     else:
-        go_long = (close > up_level)
-        go_short = (close < down_level)
-        tmp_state = pd.Series(index=df.index, dtype=float)
-        if position_mode == "Long only":
-            tmp_state[go_long] = 1.0
-            tmp_state[~go_long] = 0.0
-        elif position_mode == "Short only":
-            tmp_state[go_short] = -1.0
-            tmp_state[~go_short] = 0.0
-        else:  # Long/Short
-            tmp_state[go_long] = 1.0
-            tmp_state[go_short] = -1.0
-        desired_state = tmp_state.ffill().fillna(0.0).astype(int)
+        # True hysteresis with explicit edge-cross detection
+        desired_state = pd.Series(0, index=df.index, dtype=int)
+        prev_state = 0  # 0 = flat, 1 = long, -1 = short
+        for i in range(len(df)):
+            c = close.iloc[i]
+            ul = up_level.iloc[i]
+            dl = down_level.iloc[i]
+
+            if prev_state == 0:
+                # Enter only on crossing outside the bands
+                if position_mode in ("Long only", "Long/Short") and c > ul:
+                    prev_state = 1
+                elif position_mode in ("Short only", "Long/Short") and c < dl:
+                    prev_state = -1
+            elif prev_state == 1:
+                # While long, exit only when crossing below the lower band
+                if c < dl:
+                    if position_mode == "Long/Short" and c < dl:
+                        prev_state = -1  # flip to short in L/S
+                    else:
+                        prev_state = 0   # go flat in Long-only
+            elif prev_state == -1:
+                # While short, exit only when crossing above the upper band
+                if c > ul:
+                    if position_mode == "Long/Short" and c > ul:
+                        prev_state = 1   # flip to long in L/S
+                    else:
+                        prev_state = 0   # go flat in Short-only
+
+            # Enforce caps for Long-only / Short-only after transitions
+            if position_mode == "Long only" and prev_state == -1:
+                prev_state = 0
+            if position_mode == "Short only" and prev_state == 1:
+                prev_state = 0
+
+            desired_state.iloc[i] = prev_state
 
     # Trade-aware execution with optional trailing stop-loss and take-profit.
     # Position values: 1 = long, 0 = flat, -1 = short
@@ -193,10 +217,27 @@ def max_drawdown(curve: pd.Series) -> float:
 
 def sharpe_annualized(daily_ret: pd.Series) -> float:
     mean = daily_ret.mean()
-    std = daily_ret.std(ddof=0)
+    std = daily_ret.std(ddof=1)
     if std == 0:
         return 0.0
     return float((mean / std) * np.sqrt(252))
+
+
+@st.cache_data(show_spinner=False)
+def fetch_ohlcv_cached(ticker: str, start: dt.date, end: dt.date, auto_adjust: bool) -> pd.DataFrame:
+    return fetch_ohlcv(ticker, start, end, auto_adjust)
+
+@st.cache_data(show_spinner=False)
+def run_strategy_cached(df: pd.DataFrame,
+                        window: int,
+                        rule_mode: str,
+                        threshold_pct: float,
+                        position_mode: str,
+                        use_trailing_sl: bool,
+                        sl_pct: float,
+                        use_take_profit: bool,
+                        tp_pct: float):
+    return compute_strategy(df, window, rule_mode, threshold_pct, position_mode, use_trailing_sl, sl_pct, use_take_profit, tp_pct)
 
 
 st.set_page_config(page_title="SMA Strategy Playground", layout="wide")
@@ -276,12 +317,21 @@ with col5:
     run_btn = st.button("Run Backtest", use_container_width=True)
 
 if run_btn:
+    if start_date >= end_date:
+        st.error("Start date must be before end date.")
+        st.stop()
     try:
         with st.spinner("Fetching data..."):
-            df = fetch_ohlcv(ticker, start_date, end_date, auto_adjust=auto_adjust)
+            df = fetch_ohlcv_cached(ticker, start_date, end_date, auto_adjust)
+            if df.empty:
+                st.error("No data returned for the selected range. Try different dates or ticker.")
+                st.stop()
+            if sma_window >= len(df):
+                st.error(f"SMA window ({sma_window}) must be smaller than number of rows ({len(df)}).")
+                st.stop()
 
         with st.spinner("Computing strategy..."):
-            ma, ret_mkt, ret_strat, position = compute_strategy(
+            ma, ret_mkt, ret_strat, position = run_strategy_cached(
                 df, sma_window, rule_mode, threshold_pct, position_mode,
                 use_trailing_sl, sl_pct, use_take_profit, tp_pct
             )
@@ -330,5 +380,3 @@ if run_btn:
         st.stop()
 else:
     st.info("Set parameters and click 'Run Backtest' to begin.")
-
-
